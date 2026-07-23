@@ -1,0 +1,5 @@
+# Find this in your Toggl Track Profile settings (bottom of page)
+TOGGL_API_TOKEN=your_toggl_api_token_here
+
+# Your user ID from HackClub/Hackatime  (I found this by going to HackClubAuth -> clicking profile picture)
+HACKATIME_USER_ID=your_hackatime_user_id_here
