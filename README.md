@@ -9,6 +9,7 @@ https://github.com/user-attachments/assets/9d1bf14a-e21d-4984-99fe-91eed3f0588d
 
 
 # Installation
+Either download and run sync.exe in releases (WINDOWS ONLY, _and can only fetch yesterday's entries_) or...  
 clone the repo, then (preferably in a venv) run:
 ```
 pip install -r reqirements.txt
