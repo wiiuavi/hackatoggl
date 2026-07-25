@@ -5,20 +5,39 @@ import requests
 from datetime import datetime, timedelta, timezone
 
 try:
-    from dotenv import load_dotenv
+    from dotenv import load_dotenv, set_key
     load_dotenv()
 except ImportError:
     pass
 
-hackatimeUserId = os.getenv("HACKATIME_USER_ID")
-togglApiToken = os.getenv("TOGGL_API_TOKEN")
+
+def get_or_prompt_env(key, prompt_message):
+    val = os.getenv(key)
+    if not val:
+        val = input(prompt_message).strip()
+        if not val:
+            print(f"Error: {key} is required to run this script.")
+            sys.exit(1)
+        env_file = ".env"
+        if not os.path.exists(env_file):
+            open(env_file, "a").close()
+            
+        try:
+            set_key(env_file, key, val)
+            print(f"Saved {key} to {env_file}")
+        except Exception:
+            with open(env_file, "a") as f:
+                f.write(f"\n{key}={val}\n")
+            print(f"Saved {key} to {env_file}")
+            
+    return val
+
 
 targetTogglProject = "hackatime"
-
 togglApiBase = "https://api.track.toggl.com/api/v9"
 hackatimeApiBase = "https://hackatime.hackclub.com/api"
 
-def getTogglHeaders():
+def getTogglHeaders(togglApiToken):
     authString = f"{togglApiToken}:api_token".encode("ascii")
     authBase64 = base64.b64encode(authString).decode("ascii")
     return {
@@ -26,8 +45,8 @@ def getTogglHeaders():
         "Authorization": f"Basic {authBase64}"
     }
 
-def getWorkspaceId():
-    response = requests.get(f"{togglApiBase}/workspaces", headers=getTogglHeaders())
+def getWorkspaceId(togglApiToken):
+    response = requests.get(f"{togglApiBase}/workspaces", headers=getTogglHeaders(togglApiToken))
     response.raise_for_status()
     
     workspaces = response.json()
@@ -36,8 +55,8 @@ def getWorkspaceId():
     
     return workspaces[0]["id"]
 
-def getOrCreateProject(workspaceId):
-    response = requests.get(f"{togglApiBase}/workspaces/{workspaceId}/projects", headers=getTogglHeaders())
+def getOrCreateProject(workspaceId, togglApiToken):
+    response = requests.get(f"{togglApiBase}/workspaces/{workspaceId}/projects", headers=getTogglHeaders(togglApiToken))
     response.raise_for_status()
     projects = response.json()
     
@@ -51,11 +70,11 @@ def getOrCreateProject(workspaceId):
         "name": targetTogglProject,
         "workspace_id": workspaceId
     }
-    response = requests.post(f"{togglApiBase}/workspaces/{workspaceId}/projects", json=payload, headers=getTogglHeaders())
+    response = requests.post(f"{togglApiBase}/workspaces/{workspaceId}/projects", json=payload, headers=getTogglHeaders(togglApiToken))
     response.raise_for_status()
     return response.json()["id"]
 
-def getHackatimeSummary(targetDate):
+def getHackatimeSummary(hackatimeUserId, targetDate):
     dateStr = targetDate.strftime("%Y-%m-%d")
     url = f"{hackatimeApiBase}/summary?user_id={hackatimeUserId}&start={dateStr}&end={dateStr}"
     
@@ -63,7 +82,7 @@ def getHackatimeSummary(targetDate):
     response.raise_for_status()
     return response.json()
 
-def createTogglTimeEntry(workspaceId, projectId, description, durationSeconds, startTime):
+def createTogglTimeEntry(workspaceId, projectId, description, durationSeconds, startTime, togglApiToken):
     payload = {
         "billable": False,
         "created_with": "Hackatime-Sync-Script",
@@ -77,7 +96,7 @@ def createTogglTimeEntry(workspaceId, projectId, description, durationSeconds, s
     response = requests.post(
         f"{togglApiBase}/workspaces/{workspaceId}/time_entries",
         json=payload,
-        headers=getTogglHeaders()
+        headers=getTogglHeaders(togglApiToken)
     )
     
     if response.status_code not in (200, 201):
@@ -86,9 +105,8 @@ def createTogglTimeEntry(workspaceId, projectId, description, durationSeconds, s
         print(f" -> Successfully logged {durationSeconds} seconds for '{description}'")
 
 def main():
-    if not hackatimeUserId or not togglApiToken:
-        print("Error: HACKATIME_USER_ID and TOGGL_API_TOKEN environment variables must be set.")
-        sys.exit(1)
+    hackatimeUserId = get_or_prompt_env("HACKATIME_USER_ID", "Enter your Hackatime User ID: ")
+    togglApiToken = get_or_prompt_env("TOGGL_API_TOKEN", "Enter your Toggl API Token: ")
 
     targetDate = datetime.now(timezone.utc) - timedelta(days=1)
     
@@ -103,10 +121,10 @@ def main():
                 sys.exit(1)
 
     dateStr = targetDate.strftime('%Y-%m-%d')
-    print(f"=== Syncing Hackatime stats for {dateStr} ===")
+    print(f"\n=== Syncing Hackatime stats for {dateStr} ===")
     
     try:
-        summary = getHackatimeSummary(targetDate)
+        summary = getHackatimeSummary(hackatimeUserId, targetDate)
         projects = summary.get("projects", [])
         
         if not projects:
@@ -114,8 +132,8 @@ def main():
             return
 
         print("Authenticating with Toggl...")
-        workspaceId = getWorkspaceId()
-        projectId = getOrCreateProject(workspaceId)
+        workspaceId = getWorkspaceId(togglApiToken)
+        projectId = getOrCreateProject(workspaceId, togglApiToken)
         
         print("Creating time entries...")
         
@@ -126,7 +144,7 @@ def main():
             duration = int(proj.get("total", 0))
             
             if duration > 0:
-                createTogglTimeEntry(workspaceId, projectId, desc, duration, currentEntryStart)
+                createTogglTimeEntry(workspaceId, projectId, desc, duration, currentEntryStart, togglApiToken)
                 currentEntryStart += timedelta(seconds=duration)
                 
         print("=== Sync Complete ===")
