@@ -17,6 +17,7 @@ pip install -r reqirements.txt
 fill in ur .env and keep it super secret.   
 
 # Usage
+_Note on using the windows .exe, this will create the .env file for you, so i recommend moving the .exe to its own folder. You can follow the instructions it provides, the below may not be of use to you._
 By default, running:
 ```
 python sync.py
